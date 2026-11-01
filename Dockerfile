@@ -1,20 +1,11 @@
-# Usa uma imagem oficial leve do Node.js
-FROM node:20-alpine
+# Usa uma imagem leve do Nginx para servir arquivos estáticos
+FROM nginx:alpine
 
-# Define o diretório de trabalho dentro do container
-WORKDIR /app
+# Copia os arquivos do projeto para a pasta padrão do Nginx
+COPY . /usr/share/nginx/html
 
-# Copia os ficheiros de dependências
-COPY package*.json ./
-
-# Instala apenas as dependências de produção (ou todas se necessário para build)
-RUN npm install
-
-# Copia o restante do código da aplicação
-COPY . .
-
-# Expõe a porta que a aplicação vai utilizar (ex: 80 ou 3000)
+# Expõe a porta 80
 EXPOSE 80
 
-# Comando para iniciar a aplicação
-CMD ["npm", "start"]
+# Inicia o Nginx automaticamente
+CMD ["nginx", "-g", "daemon off;"]
