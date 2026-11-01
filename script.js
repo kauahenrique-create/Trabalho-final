@@ -1,3 +1,20 @@
+// --- CONFIGURAÇÃO DO SUPABASE ---
+const supabaseUrl = 'https://pqsqohvfbkvbwizndbfn.supabase.co';
+const supabaseKey = 'sb_publishable_tq7mlls93ac06SFAcUsBrA_cuHBZnjE';
+const _supabase = supabase.createClient(supabaseUrl, supabaseKey);
+// Função para gravar receitas favoritadas na tabela 'favoritos' do Supabase
+async function salvarFavoritoNoBanco(nomeCookie) {
+  const { data, error } = await _supabase
+    .from('favoritos')
+    .insert([{ receita: nomeCookie }]);
+
+  if (error) {
+    console.error('Erro ao guardar no Supabase:', error);
+  } else {
+    console.log('Cookie guardado nos favoritos do banco:', nomeCookie);
+  }
+}
+
 const flavors = [
   { id: 'choco-classico', name: 'Choco clássico', description: 'massa amanteigada + gotas belgas', price: 12.9, category: 'queridinhos', tone: 'tone-orange', tag: 'queridinho' },
   { id: 'red-velvet', name: 'Red velvet', description: 'cacau, chocolate branco + cream cheese', price: 14.9, category: 'queridinhos', tone: 'tone-pink', tag: 'queridinho' },
@@ -36,23 +53,43 @@ function productVisual(flavor, compact = false) {
 function renderCatalog() {
   const grid = byId('catalogGrid');
   const search = state.search.toLocaleLowerCase('pt-BR');
+  const favorites = JSON.parse(localStorage.getItem('cookieira-favorites') || '{}');
+
   const visible = flavors.filter(flavor => {
-    const matchesFilter = state.filter === 'todos' || flavor.category === state.filter;
+    let matchesFilter = false;
+    if (state.filter === 'todos') {
+      matchesFilter = true;
+    } else if (state.filter === 'favoritos') {
+      matchesFilter = !!favorites[flavor.id];
+    } else {
+      matchesFilter = flavor.category === state.filter;
+    }
     const matchesSearch = !search || `${flavor.name} ${flavor.description} ${flavor.category}`.toLocaleLowerCase('pt-BR').includes(search);
     return matchesFilter && matchesSearch;
   });
+
   byId('emptyState').hidden = visible.length > 0;
-  grid.innerHTML = visible.map(flavor => `
-    <article class="product-card">
-      ${productVisual(flavor)}
-      <span class="card-tag">${flavor.tag}</span>
-      <button class="favorite-button" type="button" aria-label="Favoritar ${flavor.name}">♡</button>
-      <div class="product-info">
-        <h3 class="product-name">${flavor.name}</h3>
-        <p class="product-description">${flavor.description}</p>
-        <div class="product-bottom"><strong class="product-price">${money(flavor.price)}</strong><button class="product-add" type="button" data-add="${flavor.id}" aria-label="Adicionar ${flavor.name}">+</button></div>
-      </div>
-    </article>`).join('');
+  
+  if (state.filter === 'favoritos' && visible.length === 0) {
+    byId('emptyState').textContent = 'Você ainda não salvou nenhum cookie nos favoritos. Clique no coração ♡ dos cookies para salvar!';
+  } else if (visible.length === 0) {
+    byId('emptyState').textContent = 'Nenhum cookie encontrou esse caminho. Tente outro sabor ou limpe a busca.';
+  }
+
+  grid.innerHTML = visible.map(flavor => {
+    const isSaved = favorites[flavor.id];
+    return `
+      <article class="product-card">
+        ${productVisual(flavor)}
+        <span class="card-tag">${flavor.tag}</span>
+        <button class="favorite-button ${isSaved ? 'saved' : ''}" type="button" data-favorite="${flavor.id}" aria-label="Favoritar ${flavor.name}">${isSaved ? '♥' : '♡'}</button>
+        <div class="product-info">
+          <h3 class="product-name">${flavor.name}</h3>
+          <p class="product-description">${flavor.description}</p>
+          <div class="product-bottom"><strong class="product-price">${money(flavor.price)}</strong><button class="product-add" type="button" data-add="${flavor.id}" aria-label="Adicionar ${flavor.name}">+</button></div>
+        </div>
+      </article>`;
+  }).join('');
 }
 
 function cartEntries() {
@@ -183,8 +220,32 @@ function init() {
   byId('catalogGrid').addEventListener('click', event => {
     const add = event.target.closest('[data-add]');
     if (add) addToCart(add.dataset.add);
-    const favorite = event.target.closest('.favorite-button');
-    if (favorite) { favorite.classList.toggle('saved'); favorite.textContent = favorite.classList.contains('saved') ? '♥' : '♡'; }
+    
+    const favorite = event.target.closest('[data-favorite]') || event.target.closest('.favorite-button');
+    if (favorite) { 
+      const card = favorite.closest('.product-card');
+      const cookieName = card.querySelector('.product-name').textContent;
+      const flavor = flavors.find(f => f.name === cookieName);
+      const flavorId = favorite.dataset.favorite || (flavor ? flavor.id : null);
+      
+      const favorites = JSON.parse(localStorage.getItem('cookieira-favorites') || '{}');
+      
+      if (flavorId) {
+        favorites[flavorId] = !favorites[flavorId];
+        localStorage.setItem('cookieira-favorites', JSON.stringify(favorites));
+
+        favorite.classList.toggle('saved', favorites[flavorId]);
+        favorite.textContent = favorites[flavorId] ? '♥' : '♡'; 
+
+        if (favorites[flavorId]) {
+          salvarFavoritoNoBanco(cookieName);
+        }
+
+        if (state.filter === 'favoritos') {
+          renderCatalog();
+        }
+      }
+    }
   });
   byId('cartItems').addEventListener('click', event => {
     const increase = event.target.closest('[data-increase]');
